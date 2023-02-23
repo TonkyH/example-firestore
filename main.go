@@ -53,11 +53,12 @@ func main() {
 	defer client.Close()
 
 	// addCityData(ctx, client)
-	addNotificationData(ctx, client)
+	// addNotificationData(ctx, client)
 	// getNotifications(ctx, client)
-	roomIDs := []string{"1", "2", "3", "4", "5", "19"}
-	listenDocuments(ctx, client, roomIDs)
-
+	// roomIDs := []string{"1", "2", "3", "4", "5", "19"}
+	// listenDocuments(ctx, client, roomIDs)
+	// listenRoomNotifications(ctx, client)
+	listenWorkspaceNotifications(ctx, client, "workspace_1")
 }
 
 func listenDocuments(ctx context.Context, client *firestore.Client, roomIDs []string) error {
@@ -70,6 +71,56 @@ func listenDocuments(ctx context.Context, client *firestore.Client, roomIDs []st
 	snapIter := client.Collection("notifications").Where("RoomId", "in", roomIDs).Where("SendTime", ">", lastFetchTime).Snapshots(ctx)
 	defer snapIter.Stop()
 
+	for {
+		snap, err := snapIter.Next()
+		if err != nil {
+			log.Fatalln(err)
+		}
+
+		if snap != nil {
+			for {
+				doc, err := snap.Documents.Next()
+				if err == iterator.Done {
+					break
+				}
+				if err != nil {
+					log.Fatalln(err)
+				}
+				fmt.Printf("data: %+v \n", doc.Data())
+			}
+		}
+	}
+}
+
+func listenRoomNotifications(ctx context.Context, client *firestore.Client) {
+	fmt.Println("All notifications: ")
+	roomIDs := []string{"3", "6", "19"}
+	snapIter := client.Collection("rooms").Where("room_id", "in", roomIDs).Snapshots(ctx)
+	for {
+		snap, err := snapIter.Next()
+		if err != nil {
+			log.Fatalln(err)
+		}
+
+		if snap != nil {
+			for {
+				doc, err := snap.Documents.Next()
+				if err == iterator.Done {
+					break
+				}
+				if err != nil {
+					log.Fatalln(err)
+				}
+				fmt.Printf("data: %+v \n", doc.Data())
+			}
+		}
+	}
+}
+
+func listenWorkspaceNotifications(ctx context.Context, client *firestore.Client, workSpace string) {
+	fmt.Println("All notifications: ")
+	roomIDs := []string{"1", "2"}
+	snapIter := client.Collection("workspaces").Doc(workSpace).Collection("notifications").Where("RoomId", "in", roomIDs).Snapshots(ctx)
 	for {
 		snap, err := snapIter.Next()
 		if err != nil {
