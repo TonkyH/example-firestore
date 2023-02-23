@@ -28,6 +28,7 @@ type Room struct {
 }
 
 type Notification struct {
+	RoomId   string    `firestore:"RoomId,omitempty"`
 	Sender   string    `firestore:"Sender,omitempty"`
 	SendTime time.Time `firestore:"SendTime,omitempty"`
 }
@@ -54,26 +55,62 @@ func main() {
 	// addCityData(ctx, client)
 	addNotificationData(ctx, client)
 	// getNotifications(ctx, client)
+	roomIDs := []string{"1", "2", "3", "4", "5", "19"}
+	listenDocuments(ctx, client, roomIDs)
 
+}
+
+func listenDocuments(ctx context.Context, client *firestore.Client, roomIDs []string) error {
+	fmt.Println("call lintenDocuments()")
+	ctx, cancel := context.WithTimeout(ctx, 120*time.Second)
+	defer cancel()
+	// lastFetchTime := time.Date(2023, 02, 22, 19, 00, 00, 00, time.UTC)
+	lastFetchTime := time.Now().Add(time.Hour * -1)
+
+	snapIter := client.Collection("notifications").Where("RoomId", "in", roomIDs).Where("SendTime", ">", lastFetchTime).Snapshots(ctx)
+	defer snapIter.Stop()
+
+	for {
+		snap, err := snapIter.Next()
+		if err != nil {
+			log.Fatalln(err)
+		}
+
+		if snap != nil {
+			for {
+				doc, err := snap.Documents.Next()
+				if err == iterator.Done {
+					break
+				}
+				if err != nil {
+					log.Fatalln(err)
+				}
+				fmt.Printf("data: %+v \n", doc.Data())
+			}
+		}
+	}
 }
 
 func getNotifications(ctx context.Context, client *firestore.Client) {
 	fmt.Println("All notifications: ")
-	roomIds := []int32{1, 2}
-	iter := client.Collection("rooms").Where("room_id", "in", roomIds).Documents(ctx)
+	roomIDs := []string{"2", "4", "19"}
+	iter := client.Collection("notifications").Where("RoomId", "in", roomIDs).Documents(ctx)
 	for {
-		doc, err := iter.Next()
+		fmt.Println("1")
+		notificationDoc, err := iter.Next()
 		if err == iterator.Done {
 			break
 		}
+		fmt.Println("2")
 		if err != nil {
-			log.Fatalf("Failed to iterate: %v", err)
+			log.Fatalln(err)
 		}
-		fmt.Println(doc.Data())
+
+		fmt.Println(notificationDoc.Data())
 	}
 }
 
-func addNotificationData(ctx context.Context, client *firestore.Client) {
+func addRoomNotificationData(ctx context.Context, client *firestore.Client) {
 	roomNotifications := []struct {
 		roomId        string
 		notifications []Notification
@@ -85,14 +122,14 @@ func addNotificationData(ctx context.Context, client *firestore.Client) {
 			{Sender: "hoge2", SendTime: time.Now().Add(time.Second * -10)},
 			{Sender: "hoge1", SendTime: time.Now().Add(time.Hour * -1)},
 		}},
-		{roomId: "6", notifications: []Notification{
+		{roomId: "3", notifications: []Notification{
 			{Sender: "hoge5", SendTime: time.Now().Add(time.Hour * -1)},
 			{Sender: "hoge9", SendTime: time.Now().Add(time.Minute * -30)},
 			{Sender: "hoge8", SendTime: time.Now()},
 			{Sender: "hoge2", SendTime: time.Now().Add(time.Second * -1)},
 			{Sender: "hoge10", SendTime: time.Now().Add(time.Hour * -10)},
 		}},
-		{roomId: "19", notifications: []Notification{
+		{roomId: "6", notifications: []Notification{
 			{Sender: "hoge22", SendTime: time.Now().Add(time.Minute * -10)},
 			{Sender: "hoge19", SendTime: time.Now().Add(time.Minute * -9)},
 			{Sender: "hoge30", SendTime: time.Now()},
@@ -106,6 +143,48 @@ func addNotificationData(ctx context.Context, client *firestore.Client) {
 	for _, roomNotification := range roomNotifications {
 		for _, notf := range roomNotification.notifications {
 			ref := client.Collection("rooms").Doc(roomNotification.roomId).Collection("notifications").NewDoc()
+			batch.Set(ref, notf)
+		}
+	}
+
+	_, err := batch.Commit(ctx)
+	if err != nil {
+		log.Fatalf("An has occurred: %s", err)
+	}
+}
+
+func addNotificationData(ctx context.Context, client *firestore.Client) {
+	roomNotifications := []struct {
+		notifications []Notification
+	}{
+		{notifications: []Notification{
+			{RoomId: "1", Sender: "hoge1", SendTime: time.Now().Add(time.Hour * -10)},
+			{RoomId: "1", Sender: "hoge2", SendTime: time.Now().Add(time.Minute * -10)},
+			{RoomId: "1", Sender: "hoge8", SendTime: time.Now()},
+			{RoomId: "1", Sender: "hoge2", SendTime: time.Now().Add(time.Second * -10)},
+			{RoomId: "1", Sender: "hoge1", SendTime: time.Now().Add(time.Hour * -1)},
+		}},
+		{notifications: []Notification{
+			{RoomId: "3", Sender: "hoge5", SendTime: time.Now().Add(time.Hour * -1)},
+			{RoomId: "3", Sender: "hoge9", SendTime: time.Now().Add(time.Minute * -30)},
+			{RoomId: "3", Sender: "hoge8", SendTime: time.Now()},
+			{RoomId: "3", Sender: "hoge2", SendTime: time.Now().Add(time.Second * -1)},
+			{RoomId: "3", Sender: "hoge10", SendTime: time.Now().Add(time.Hour * -10)},
+		}},
+		{notifications: []Notification{
+			{RoomId: "6", Sender: "hoge22", SendTime: time.Now().Add(time.Minute * -10)},
+			{RoomId: "6", Sender: "hoge19", SendTime: time.Now().Add(time.Minute * -9)},
+			{RoomId: "6", Sender: "hoge30", SendTime: time.Now()},
+			{RoomId: "6", Sender: "hoge22", SendTime: time.Now().Add(time.Hour * -1)},
+			{RoomId: "6", Sender: "hoge1", SendTime: time.Now().Add(time.Second * -10)},
+		}},
+	}
+
+	batch := client.Batch()
+
+	for _, roomNotification := range roomNotifications {
+		for _, notf := range roomNotification.notifications {
+			ref := client.Collection("notifications").NewDoc()
 			batch.Set(ref, notf)
 		}
 	}
