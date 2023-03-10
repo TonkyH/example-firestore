@@ -11,6 +11,7 @@ import (
 	firebase "firebase.google.com/go"
 	"github.com/joho/godotenv"
 	"google.golang.org/api/iterator"
+	"google.golang.org/api/option"
 )
 
 // City represents a city.
@@ -35,12 +36,17 @@ type Notification struct {
 
 func main() {
 	ctx := context.Background()
-	projectID, err := loadProjectIDFromEnvFile()
+	projectID, serviceAccountID, err := loadProjectIDFromEnvFile()
+	fmt.Println(projectID)
 	if err != nil {
 		log.Fatalln(err)
 	}
-	conf := &firebase.Config{ProjectID: projectID}
-	app, err := firebase.NewApp(ctx, conf)
+	conf := &firebase.Config{
+		ProjectID:        projectID,
+		ServiceAccountID: serviceAccountID,
+	}
+	opt := option.WithCredentialsFile("./secret.json")
+	app, err := firebase.NewApp(ctx, conf, opt)
 	if err != nil {
 		log.Fatalln(err)
 	}
@@ -58,7 +64,8 @@ func main() {
 	// roomIDs := []string{"1", "2", "3", "4", "5", "19"}
 	// listenDocuments(ctx, client, roomIDs)
 	// listenRoomNotifications(ctx, client)
-	listenWorkspaceNotifications(ctx, client, "workspace_1")
+	// listenWorkspaceNotifications(ctx, client, "workspace_1")
+	listenUseBaseNotifications(ctx, client)
 }
 
 func listenDocuments(ctx context.Context, client *firestore.Client, roomIDs []string) error {
@@ -121,6 +128,30 @@ func listenWorkspaceNotifications(ctx context.Context, client *firestore.Client,
 	fmt.Println("All notifications: ")
 	roomIDs := []string{"1", "2"}
 	snapIter := client.Collection("workspaces").Doc(workSpace).Collection("notifications").Where("RoomId", "in", roomIDs).Snapshots(ctx)
+	for {
+		snap, err := snapIter.Next()
+		if err != nil {
+			log.Fatalln(err)
+		}
+
+		if snap != nil {
+			for {
+				doc, err := snap.Documents.Next()
+				if err == iterator.Done {
+					break
+				}
+				if err != nil {
+					log.Fatalln(err)
+				}
+				fmt.Printf("data: %+v \n", doc.Data())
+			}
+		}
+	}
+}
+
+func listenUseBaseNotifications(ctx context.Context, client *firestore.Client) {
+	fmt.Println("All notifications: ")
+	snapIter := client.Collection("users").Doc("user1").Collection("rooms").Snapshots(ctx)
 	for {
 		snap, err := snapIter.Next()
 		if err != nil {
@@ -265,10 +296,10 @@ func addCityData(ctx context.Context, client *firestore.Client) {
 	}
 }
 
-func loadProjectIDFromEnvFile() (string, error) {
+func loadProjectIDFromEnvFile() (string, string, error) {
 	err := godotenv.Load(".env")
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
-	return os.Getenv("ProjectID"), nil
+	return os.Getenv("ProjectID"), os.Getenv("ServiceAccountID"), nil
 }
